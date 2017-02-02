@@ -596,13 +596,13 @@ napi_status napi_create_function(
   return GET_RETURN_STATUS();
 }
 
-napi_status napi_create_constructor(
+napi_status napi_define_class(
     napi_env e,
     const char* utf8name,
-    napi_callback cb,
+    napi_callback constructor,
     void* data,
     int property_count,
-    napi_property_descriptor* properties,
+    const napi_property_descriptor* properties,
     napi_value* result) {
   NAPI_PREAMBLE(e);
   CHECK_ARG(result);
@@ -613,7 +613,7 @@ napi_status napi_create_constructor(
 
   v8::EscapableHandleScope scope(isolate);
   v8::Local<v8::Object> cbdata =
-    v8impl::CreateFunctionCallbackData(e, cb, data);
+    v8impl::CreateFunctionCallbackData(e, constructor, data);
 
   RETURN_STATUS_IF_FALSE(!cbdata.IsEmpty(), napi_generic_failure);
 
@@ -628,7 +628,7 @@ napi_status napi_create_constructor(
   tpl->SetClassName(namestring);
 
   for (int i = 0; i < property_count; i++) {
-    napi_property_descriptor* p = properties + i;
+    const napi_property_descriptor* p = properties + i;
     v8::Local<v8::String> propertyname;
     CHECK_NEW_FROM_UTF8(isolate, propertyname, p->utf8name);
 
@@ -851,8 +851,8 @@ napi_status napi_get_element(napi_env e,
   return GET_RETURN_STATUS();
 }
 
-napi_status napi_define_property(napi_env e, napi_value o,
-                                 napi_property_descriptor* p) {
+napi_status napi_define_properties(napi_env e, napi_value o,
+    int property_count, const napi_property_descriptor* properties) {
   NAPI_PREAMBLE(e);
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
@@ -860,68 +860,72 @@ napi_status napi_define_property(napi_env e, napi_value o,
   v8::Local<v8::Object> obj;
   CHECK_TO_OBJECT(context, obj, o);
 
-  v8::Local<v8::Name> name;
-  CHECK_NEW_FROM_UTF8(isolate, name, p->utf8name);
+  for (int i = 0; i < property_count; i++) {
+    const napi_property_descriptor* p = &properties[i];
 
-  v8::PropertyAttribute attributes =
-    static_cast<v8::PropertyAttribute>(p->attributes);
+    v8::Local<v8::Name> name;
+    CHECK_NEW_FROM_UTF8(isolate, name, p->utf8name);
 
-  if (p->method) {
-    v8::Local<v8::Object> cbdata = v8impl::CreateFunctionCallbackData(
-      e, p->method, p->data);
+    v8::PropertyAttribute attributes =
+      static_cast<v8::PropertyAttribute>(p->attributes);
 
-    RETURN_STATUS_IF_FALSE(!cbdata.IsEmpty(), napi_generic_failure);
+    if (p->method) {
+      v8::Local<v8::Object> cbdata = v8impl::CreateFunctionCallbackData(
+        e, p->method, p->data);
 
-    v8::Local<v8::FunctionTemplate> t = v8::FunctionTemplate::New(
-      isolate, v8impl::FunctionCallbackWrapper::Invoke, cbdata);
+      RETURN_STATUS_IF_FALSE(!cbdata.IsEmpty(), napi_generic_failure);
 
-    auto define_maybe = obj->DefineOwnProperty(
-      context,
-      name,
-      t->GetFunction(),
-      attributes);
+      v8::Local<v8::FunctionTemplate> t = v8::FunctionTemplate::New(
+        isolate, v8impl::FunctionCallbackWrapper::Invoke, cbdata);
 
-    // IsNothing seems like a serious failure,
-    // should we return a different error code if the define failed?
-    if (define_maybe.IsNothing() || !define_maybe.FromMaybe(false))
-    {
-      return napi_set_last_error(napi_generic_failure);
+      auto define_maybe = obj->DefineOwnProperty(
+        context,
+        name,
+        t->GetFunction(),
+        attributes);
+
+      // IsNothing seems like a serious failure,
+      // should we return a different error code if the define failed?
+      if (define_maybe.IsNothing() || !define_maybe.FromMaybe(false))
+      {
+        return napi_set_last_error(napi_generic_failure);
+      }
     }
-  }
-  else if (p->getter || p->setter) {
-    v8::Local<v8::Object> cbdata = v8impl::CreateAccessorCallbackData(
-      e, p->getter, p->setter, p->data);
+    else if (p->getter || p->setter) {
+      v8::Local<v8::Object> cbdata = v8impl::CreateAccessorCallbackData(
+        e, p->getter, p->setter, p->data);
 
-    auto set_maybe = obj->SetAccessor(
-      context,
-      name,
-      v8impl::GetterCallbackWrapper::Invoke,
-      p->setter ? v8impl::SetterCallbackWrapper::Invoke : nullptr,
-      cbdata,
-      v8::AccessControl::DEFAULT,
-      attributes);
+      auto set_maybe = obj->SetAccessor(
+        context,
+        name,
+        v8impl::GetterCallbackWrapper::Invoke,
+        p->setter ? v8impl::SetterCallbackWrapper::Invoke : nullptr,
+        cbdata,
+        v8::AccessControl::DEFAULT,
+        attributes);
 
-    // IsNothing seems like a serious failure,
-    // should we return a different error code if the set failed?
-    if (set_maybe.IsNothing() || !set_maybe.FromMaybe(false))
-    {
-      return napi_set_last_error(napi_generic_failure);
+      // IsNothing seems like a serious failure,
+      // should we return a different error code if the set failed?
+      if (set_maybe.IsNothing() || !set_maybe.FromMaybe(false))
+      {
+        return napi_set_last_error(napi_generic_failure);
+      }
     }
-  }
-  else {
-    v8::Local<v8::Value> value = v8impl::V8LocalValueFromJsValue(p->value);
+    else {
+      v8::Local<v8::Value> value = v8impl::V8LocalValueFromJsValue(p->value);
 
-    auto define_maybe = obj->DefineOwnProperty(
-      context,
-      name,
-      value,
-      attributes);
+      auto define_maybe = obj->DefineOwnProperty(
+        context,
+        name,
+        value,
+        attributes);
 
-    // IsNothing seems like a serious failure,
-    // should we return a different error code if the define failed?
-    if (define_maybe.IsNothing() || !define_maybe.FromMaybe(false))
-    {
-      return napi_set_last_error(napi_generic_failure);
+      // IsNothing seems like a serious failure,
+      // should we return a different error code if the define failed?
+      if (define_maybe.IsNothing() || !define_maybe.FromMaybe(false))
+      {
+        return napi_set_last_error(napi_generic_failure);
+      }
     }
   }
 

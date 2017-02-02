@@ -21,7 +21,10 @@ enum napi_property_attributes {
   napi_default = 0,
   napi_read_only = 1 << 0,
   napi_dont_enum = 1 << 1,
-  napi_dont_delete = 1 << 2
+  napi_dont_delete = 1 << 2,
+
+  // For internal use only by the NAPI C++ wrapper.
+  napi_instance_property = 1 << 10,
 };
 
 struct napi_property_descriptor {

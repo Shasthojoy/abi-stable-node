@@ -52,6 +52,7 @@ enum napi_valuetype {
 };
 
 enum napi_typedarray_type {
+  napi_unknown_type,
   napi_int8,
   napi_uint8,
   napi_uint8_clamped,

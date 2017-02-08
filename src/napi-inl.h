@@ -1169,12 +1169,23 @@ inline void* CallbackInfo::Data() const {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-inline ObjectWrap<T>::ObjectWrap() {
+inline ObjectWrap<T>::ObjectWrap() : _env(nullptr), _strongRef(nullptr), _weakRef(nullptr), _refcount(0) {
 }
 
 template <typename T>
 inline Object ObjectWrap<T>::Wrapper() const {
-  return _wrapper.Value().AsObject();
+  if (_strongRef != nullptr) {
+    return Persistent(_env, _strongRef).Value().AsObject();
+  }
+  else if (_weakRef != nullptr) {
+    napi_value value;
+    napi_status status = napi_get_weakref_value(_env, _weakRef, &value);
+    if (status != napi_ok) throw Error::New(Napi::Env(_env));
+    return Object(_env, value);
+  }
+  else {
+    return Object();
+  }
 }
 
 template <typename T>
@@ -1352,6 +1363,53 @@ inline ClassPropertyDescriptor<T> ObjectWrap<T>::InstanceValue(
 }
 
 template <typename T>
+inline void ObjectWrap<T>::Ref() {
+  if (_refcount == 0) {
+    napi_value value;
+    napi_status status = napi_get_weakref_value(_env, _weakRef, &value);
+    if (status != napi_ok) throw Error::New(Napi::Env(_env));
+
+    if (value == nullptr) {
+      throw Error::New(Napi::Env(_env), "Invalid state for Ref() call. Object is unavailable.");
+    }
+
+    status = napi_create_persistent(_env, value, &_strongRef);
+    if (status != napi_ok) throw Error::New(Napi::Env(_env));
+
+    status = napi_release_weakref(_env, _weakRef);
+    if (status != napi_ok) throw Error::New(Napi::Env(_env));
+
+    _weakRef = nullptr;
+  }
+
+  _refcount++;
+}
+
+template <typename T>
+inline void ObjectWrap<T>::Unref() {
+  if (_refcount == 0) {
+    throw Error::New(Napi::Env(_env),
+      "Invalid state for Unref() call. Object is not referenced.");
+  }
+
+  if (_refcount == 1) {
+    napi_value value;
+    napi_status status = napi_get_persistent_value(_env, _strongRef, &value);
+    if (status != napi_ok) throw Error::New(Napi::Env(_env));
+
+    status = napi_create_weakref(_env, value, &_weakRef);
+    if (status != napi_ok) throw Error::New(Napi::Env(_env));
+
+    status = napi_release_persistent(_env, _strongRef);
+    if (status != napi_ok) throw Error::New(Napi::Env(_env));
+
+    _strongRef = nullptr;
+  }
+
+  _refcount--;
+}
+
+template <typename T>
 inline void ObjectWrap<T>::ConstructorCallbackWrapper(
     napi_env env,
     napi_callback_info info) {
@@ -1370,7 +1428,6 @@ inline void ObjectWrap<T>::ConstructorCallbackWrapper(
     CallbackInfo callbackInfo(env, info);
     CallbackData* callbackData = reinterpret_cast<CallbackData*>(callbackInfo.Data());
     instance = callbackData->constructorCallback(callbackInfo);
-    instance->_wrapper = callbackInfo.This().MakePersistent();
     wrapper = callbackInfo.This();
   }
   catch (const Error& e) {
@@ -1380,7 +1437,9 @@ inline void ObjectWrap<T>::ConstructorCallbackWrapper(
     return;
   }
 
-  status = napi_wrap(env, wrapper, instance, nullptr, nullptr); // TODO: Destructor?
+  instance->_env = env;
+
+  status = napi_wrap(env, wrapper, instance, nullptr, &instance->_weakRef); // TODO: Destructor?
   if (status != napi_ok) return;
 
   status = napi_set_return_value(env, info, wrapper);

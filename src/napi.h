@@ -563,8 +563,14 @@ namespace Napi {
                                             Value value,
                                             napi_property_attributes attributes = napi_default);
 
+    void Ref();
+    void Unref();
+
   private:
-    Persistent _wrapper;
+    napi_env _env;
+    napi_persistent _strongRef;
+    napi_weakref _weakRef;
+    int _refcount;
 
     static void ConstructorCallbackWrapper(napi_env env, napi_callback_info info);
     static void StaticVoidMethodCallbackWrapper(napi_env env, napi_callback_info info);

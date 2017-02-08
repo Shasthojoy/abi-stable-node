@@ -152,6 +152,8 @@ namespace v8impl {
   }
 
   static void WeakRefCallback(const v8::WeakCallbackInfo<int>& data) {
+    v8::Persistent<v8::Value>* persistent = reinterpret_cast<v8::Persistent<v8::Value>*>(data.GetParameter());
+    persistent->Reset();
   }
 
   class TryCatch: public v8::TryCatch {
@@ -1554,8 +1556,7 @@ napi_status napi_wrap(napi_env e, napi_value jsObject, void* nativeObj,
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> obj;
-  CHECK_TO_OBJECT(context, obj, jsObject);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(jsObject).As<v8::Object>();
 
   v8impl::ObjectWrapWrapper* wrap =
       new v8impl::ObjectWrapWrapper(obj, nativeObj, destructor);
@@ -1632,7 +1633,7 @@ napi_status napi_create_weakref(napi_env e, napi_value v, napi_weakref* result) 
   v8::Persistent<v8::Value> *thePersistent =
       new v8::Persistent<v8::Value>(
           isolate, v8impl::V8LocalValueFromJsValue(v));
-  thePersistent->SetWeak(static_cast<int*>(nullptr), v8impl::WeakRefCallback,
+  thePersistent->SetWeak(reinterpret_cast<int*>(thePersistent), v8impl::WeakRefCallback,
                          v8::WeakCallbackType::kParameter);
   // need to mark independent?
   *result = v8impl::JsWeakRefFromV8PersistentValue(thePersistent);

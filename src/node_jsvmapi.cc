@@ -151,8 +151,8 @@ namespace v8impl {
     return (v8::Persistent<v8::Value>*) per;
   }
 
-  static void WeakRefCallback(const v8::WeakCallbackInfo<int>& data) {
-    v8::Persistent<v8::Value>* persistent = reinterpret_cast<v8::Persistent<v8::Value>*>(data.GetParameter());
+  static void WeakRefCallback(const v8::WeakCallbackInfo<v8::Persistent<v8::Value>>& data) {
+    v8::Persistent<v8::Value>* persistent = data.GetParameter();
     persistent->Reset();
   }
 
@@ -723,8 +723,7 @@ napi_status napi_get_propertynames(napi_env e, napi_value o, napi_value* result)
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> obj;
-  CHECK_TO_OBJECT(context, obj, o);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(o).As<v8::Object>();
 
   auto maybe_propertynames = obj->GetPropertyNames(context);
 
@@ -742,9 +741,7 @@ napi_status napi_set_property(napi_env e,
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> obj;
-
-  CHECK_TO_OBJECT(context, obj, o);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(o).As<v8::Object>();
 
   v8::Local<v8::Value> key = v8impl::V8LocalValueFromJsPropertyName(k);
   v8::Local<v8::Value> val = v8impl::V8LocalValueFromJsValue(v);
@@ -761,9 +758,7 @@ napi_status napi_has_property(napi_env e, napi_value o, napi_propertyname k, boo
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> obj;
-
-  CHECK_TO_OBJECT(context, obj, o);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(o).As<v8::Object>();
 
   v8::Local<v8::Value> key = v8impl::V8LocalValueFromJsPropertyName(k);
   v8::Maybe<bool> has_maybe = obj->Has(context, key);
@@ -784,9 +779,7 @@ napi_status napi_get_property(napi_env e,
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
   v8::Local<v8::Value> key = v8impl::V8LocalValueFromJsPropertyName(k);
-  v8::Local<v8::Object> obj;
-
-  CHECK_TO_OBJECT(context, obj, o);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(o).As<v8::Object>();
 
   auto get_maybe = obj->Get(context, key);
 
@@ -802,9 +795,7 @@ napi_status napi_set_element(napi_env e, napi_value o, uint32_t i, napi_value v)
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> obj;
-
-  CHECK_TO_OBJECT(context, obj, o);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(o).As<v8::Object>();
 
   v8::Local<v8::Value> val = v8impl::V8LocalValueFromJsValue(v);
   auto set_maybe = obj->Set(context, i, val);
@@ -820,9 +811,7 @@ napi_status napi_has_element(napi_env e, napi_value o, uint32_t i, bool* result)
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> obj;
-
-  CHECK_TO_OBJECT(context, obj, o);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(o).As<v8::Object>();
 
   v8::Maybe<bool> has_maybe = obj->Has(context, i);
 
@@ -841,9 +830,7 @@ napi_status napi_get_element(napi_env e,
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> obj;
-
-  CHECK_TO_OBJECT(context, obj, o);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(o).As<v8::Object>();
 
   auto get_maybe = obj->Get(context, i);
 
@@ -859,8 +846,8 @@ napi_status napi_define_properties(napi_env e, napi_value o,
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> obj;
-  CHECK_TO_OBJECT(context, obj, o);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(o).As<v8::Object>();
+  v8::HandleScope scope(isolate);
 
   for (int i = 0; i < property_count; i++) {
     const napi_property_descriptor* p = &properties[i];
@@ -973,9 +960,7 @@ napi_status napi_get_prototype(napi_env e, napi_value o, napi_value* result) {
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-
-  v8::Local<v8::Object> obj;
-  CHECK_TO_OBJECT(context, obj, o);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(o).As<v8::Object>();
 
   v8::Local<v8::Value> val = obj->GetPrototype();
   *result = v8impl::JsValueFromV8LocalValue(val);
@@ -1268,9 +1253,7 @@ napi_status napi_call_function(napi_env e,
   std::vector<v8::Handle<v8::Value>> args(argc);
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-
-  v8::Handle<v8::Object> v8recv;
-  CHECK_TO_OBJECT(context, v8recv, recv);
+  v8::Local<v8::Value> v8recv = v8impl::V8LocalValueFromJsValue(recv);
 
   for (int i = 0; i < argc; i++) {
     args[i] = v8impl::V8LocalValueFromJsValue(argv[i]);
@@ -1580,8 +1563,7 @@ napi_status napi_unwrap(napi_env e, napi_value jsObject, void** result) {
 
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
-  v8::Local<v8::Object> obj;
-  CHECK_TO_OBJECT(context, obj, jsObject);
+  v8::Local<v8::Object> obj = v8impl::V8LocalValueFromJsValue(jsObject).As<v8::Object>();
 
   *result = v8impl::ObjectWrapWrapper::Unwrap(obj);
   return GET_RETURN_STATUS();
@@ -1633,7 +1615,7 @@ napi_status napi_create_weakref(napi_env e, napi_value v, napi_weakref* result) 
   v8::Persistent<v8::Value> *thePersistent =
       new v8::Persistent<v8::Value>(
           isolate, v8impl::V8LocalValueFromJsValue(v));
-  thePersistent->SetWeak(reinterpret_cast<int*>(thePersistent), v8impl::WeakRefCallback,
+  thePersistent->SetWeak(thePersistent, v8impl::WeakRefCallback,
                          v8::WeakCallbackType::kParameter);
   // need to mark independent?
   *result = v8impl::JsWeakRefFromV8PersistentValue(thePersistent);
@@ -1749,12 +1731,11 @@ napi_status napi_instanceof(napi_env e, napi_value obj, napi_value cons, bool* r
 
   *result = false;
 
-  v8::Local<v8::Object> v8Cons;
   v8::Local<v8::String> prototypeString;
   v8::Isolate *isolate = v8impl::V8IsolateFromJsEnv(e);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
-  CHECK_TO_OBJECT(context, v8Cons, cons);
+  v8::Local<v8::Object> v8Cons = v8impl::V8LocalValueFromJsValue(cons).As<v8::Object>();
 
   if (!v8Cons->IsFunction()) {
     napi_throw_type_error(e, "constructor must be a function");
@@ -1780,9 +1761,7 @@ napi_status napi_instanceof(napi_env e, napi_value obj, napi_value cons, bool* r
 
   v8::Local<v8::Value> v8Obj = v8impl::V8LocalValueFromJsValue(obj);
   if (!v8Obj->StrictEquals(v8Cons)) {
-    for (v8::Local<v8::Value> originalObj = v8Obj;
-        !(v8Obj->IsNull() || v8Obj->IsUndefined());
-        ) {
+    for (v8::Local<v8::Value> originalObj = v8Obj; v8Obj->IsObject(); ) {
       if (v8Obj->StrictEquals(v8Cons)) {
         *result =
           !(originalObj->IsNumber() ||
@@ -1790,9 +1769,7 @@ napi_status napi_instanceof(napi_env e, napi_value obj, napi_value cons, bool* r
             originalObj->IsString());
         break;
       }
-      v8::Local<v8::Object> obj;
-      CHECK_TO_OBJECT(context, obj, v8impl::JsValueFromV8LocalValue(v8Obj));
-      v8Obj = obj->GetPrototype();
+      v8Obj = v8Obj.As<v8::Object>()->GetPrototype();
     }
   }
 

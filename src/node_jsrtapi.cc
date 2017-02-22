@@ -38,6 +38,7 @@ void napi_module_register(void* mod) {
 //Callback Info struct as per JSRT native function.
 struct CallbackInfo {
   bool isConstructCall;
+  napi_value thisArg;
   unsigned short argc;
   napi_value* argv;
   void* data;
@@ -140,17 +141,13 @@ namespace jsrtimpl {
     // JsFinalizeCallback
     static void CHAKRA_CALLBACK Finalize(void* callbackState) {
       ExternalData* externalData = reinterpret_cast<ExternalData*>(callbackState);
+      if (externalData != nullptr) {
+        if (externalData->_cb != nullptr) {
+          externalData->_cb(externalData->_data);
+        }
 
-      if (externalData->_cb != nullptr) {
-        externalData->_cb(externalData->_data);
+        delete externalData;
       }
-
-      delete externalData;
-    }
-
-    // JsObjectBeforeCollectCallback
-    static void CHAKRA_CALLBACK Finalize(JsRef value, void* callbackState) {
-      return Finalize(callbackState);
     }
 
   private:
@@ -257,10 +254,33 @@ _Ret_maybenull_ JsValueRef CALLBACK CallbackWrapper(JsValueRef callee, bool isCo
   JsErrorCode error = JsNoError;
   JsValueRef undefinedValue;
   error = JsGetUndefinedValue(&undefinedValue);
+
   CallbackInfo cbInfo;
+  cbInfo.thisArg = reinterpret_cast<napi_value>(arguments[0]);
   cbInfo.isConstructCall = isConstructCall;
-  cbInfo.argc = argumentCount;
-  cbInfo.argv = reinterpret_cast<napi_value*>(arguments);
+
+  if (isConstructCall) {
+    // For constructor callbacks, replace the the 'this' arg with a new external object,
+    // to support wrapping a native object in the external object.
+    JsValueRef externalThis;
+    if (JsNoError == JsCreateExternalObject(
+        nullptr, jsrtimpl::ExternalData::Finalize, &externalThis)) {
+
+      // Copy the prototype from the default 'this' arg to the new 'external' this arg.
+      if (arguments[0] != nullptr) {
+        JsValueRef thisPrototype;
+        if (JsNoError == JsGetPrototype(arguments[0], &thisPrototype)) {
+          JsSetPrototype(externalThis, thisPrototype);
+        }
+      }
+
+      cbInfo.thisArg = reinterpret_cast<napi_value>(externalThis);
+    }
+  }
+
+  cbInfo.argc = argumentCount - 1;
+  cbInfo.argv = reinterpret_cast<napi_value*>(arguments + 1);
+
   error = JsGetExternalData(callee, &cbInfo.data);
   cbInfo.returnValue = reinterpret_cast<napi_value>(undefinedValue);
   napi_callback cb = reinterpret_cast<napi_callback>(callbackState);
@@ -701,7 +721,7 @@ napi_status napi_get_cb_args_length(napi_env e, napi_callback_info cbinfo, int* 
   CHECK_ARG(cbinfo);
   CHECK_ARG(result);
   const CallbackInfo *info = reinterpret_cast<CallbackInfo*>(cbinfo);
-  *result = (info->argc) - 1;
+  *result = info->argc;
   return napi_ok;
 }
 
@@ -721,10 +741,10 @@ napi_status napi_get_cb_args(napi_env e, napi_callback_info cbinfo,
   const CallbackInfo *info = reinterpret_cast<CallbackInfo*>(cbinfo);
 
   int i = 0;
-  int min = bufferlength < (info->argc) - 1 ? bufferlength : (info->argc) - 1;
+  int min = bufferlength < info->argc ? bufferlength : info->argc;
 
   for (; i < min; i++) {
-    buffer[i] = info->argv[i + 1];
+    buffer[i] = info->argv[i];
   }
 
   if (i < bufferlength) {
@@ -742,7 +762,7 @@ napi_status napi_get_cb_this(napi_env e, napi_callback_info cbinfo, napi_value* 
   CHECK_ARG(cbinfo);
   CHECK_ARG(result);
   const CallbackInfo *info = reinterpret_cast<CallbackInfo*>(cbinfo);
-  *result = info->argv[0];
+  *result = info->thisArg;
   return napi_ok;
 }
 
@@ -753,7 +773,7 @@ napi_status napi_get_cb_holder(napi_env e, napi_callback_info cbinfo, napi_value
   CHECK_ARG(cbinfo);
   CHECK_ARG(result);
   const CallbackInfo *info = reinterpret_cast<CallbackInfo*>(cbinfo);
-  *result = info->argv[0];
+  *result = info->thisArg;
   return napi_ok;
 }
 
@@ -999,8 +1019,6 @@ napi_status napi_wrap(napi_env e, napi_value jsObject, void* nativeObj,
 
   jsrtimpl::ExternalData* externalData = new jsrtimpl::ExternalData(nativeObj, finalize_cb);
   CHECK_JSRT(JsSetExternalData(value, externalData));
-  CHECK_JSRT(JsSetObjectBeforeCollectCallback(
-    value, externalData, jsrtimpl::ExternalData::Finalize));
 
   if (result != nullptr) {
     napi_create_reference(e, jsObject, 0, result);

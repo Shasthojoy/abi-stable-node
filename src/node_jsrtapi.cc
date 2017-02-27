@@ -220,6 +220,91 @@ namespace jsrtimpl {
     void* _data;
   };
 
+  class Reference {
+  public:
+    Reference(JsValueRef valueRef) : _valueRef(valueRef), _refcount(0) {
+    }
+
+    JsErrorCode Initialize(int initialRefcount) {
+      JsErrorCode error = JsSetObjectBeforeCollectCallback(
+        _valueRef, this, jsrtimpl::Reference::Finalize);
+
+      if (error == JsNoError) {
+        _refcount = initialRefcount;
+        if (_refcount > 0) {
+          error = JsAddRef(_valueRef, nullptr);
+        }
+      }
+
+      return error;
+    }
+
+    JsErrorCode AddRef(int* result) {
+      if (_valueRef == nullptr) {
+        return JsErrorInvalidArgument;
+      }
+
+      if (++_refcount == 1) {
+        JsErrorCode error = JsAddRef(_valueRef, nullptr);
+        if (error != JsNoError) {
+          return error;
+        }
+      }
+
+      if (result != nullptr) {
+        *result = _refcount;
+      }
+
+      return JsNoError;
+    }
+
+    JsErrorCode Release(int* result) {
+      if (_refcount == 0) {
+        return JsErrorInvalidArgument;
+      }
+
+      if (--_refcount == 0) {
+        JsErrorCode error = JsRelease(_valueRef, nullptr);
+        if (error != JsNoError) {
+          return error;
+        }
+      }
+
+      if (result != nullptr) {
+        *result = _refcount;
+      }
+
+      return JsNoError;
+    }
+
+    JsErrorCode Get(JsValueRef* result) {
+      *result = _valueRef;
+      return JsNoError;
+    }
+
+    JsErrorCode Delete() {
+      if (_refcount > 0) {
+        JsErrorCode error = JsRelease(_valueRef, nullptr);
+        if (error != JsNoError) {
+          return error;
+        }
+      }
+
+      delete this;
+    }
+
+  private:
+    // JsObjectBeforeCollectCallback
+    static void CALLBACK Finalize(JsRef ref, void* callbackState) {
+      jsrtimpl::Reference* reference =
+        reinterpret_cast<jsrtimpl::Reference*>(callbackState);
+      reference->_valueRef = nullptr;
+    }
+
+    JsValueRef _valueRef;
+    int _refcount;
+  };
+
 }  // end of namespace jsrtimpl
 
 #define RETURN_STATUS_IF_FALSE(condition, status)                       \
@@ -1101,44 +1186,22 @@ napi_status napi_create_reference(napi_env e, napi_value v, int initial_refcount
     napi_ref* result) {
   CHECK_ARG(result);
 
-  JsValueRef strongRef = reinterpret_cast<JsValueRef>(v);
-  JsWeakRef weakRef = nullptr;
-  CHECK_JSRT(JsCreateWeakReference(strongRef, &weakRef));
+  jsrtimpl::Reference* ref = new jsrtimpl::Reference(v);
+  if (ref == nullptr) return napi_set_last_error(napi_generic_failure);
 
-  // Prevent the reference itself from being collected until it is explicitly deleted.
-  CHECK_JSRT(JsAddRef(weakRef, nullptr));
+  CHECK_JSRT(ref->Initialize(initial_refcount));
 
-  // Apply the initial refcount to the target value.
-  for (int i = 0; i < initial_refcount; i++) {
-    CHECK_JSRT(JsAddRef(strongRef, nullptr));
-
-    // Also increment the refcount of the reference by the same amount,
-    // to enable reverting the target's refcount when the reference is deleted.
-    CHECK_JSRT(JsAddRef(weakRef, nullptr));
-  }
-
-  *result = reinterpret_cast<napi_ref>(weakRef);
+  *result = reinterpret_cast<napi_ref>(ref);
   return napi_ok;
 }
 
 // Deletes a reference. The referenced value is released, and may be GC'd unless there
 // are other references to it.
 napi_status napi_delete_reference(napi_env e, napi_ref ref) {
-  JsRef weakRef = reinterpret_cast<JsRef>(ref);
+  CHECK_ARG(ref);
 
-  unsigned int count;
-  CHECK_JSRT(JsRelease(weakRef, &count));
-
-  if (count > 0) {
-    // Revert this reference's contribution to the target's refcount.
-    JsValueRef target;
-    CHECK_JSRT(JsGetWeakReferenceValue(weakRef, &target));
-
-    do {
-      CHECK_JSRT(JsRelease(weakRef, &count));
-      CHECK_JSRT(JsRelease(target, nullptr));
-    } while (count > 0);
-  }
+  jsrtimpl::Reference* refimpl = reinterpret_cast<jsrtimpl::Reference*>(ref);
+  CHECK_JSRT(refimpl->Delete());
 
   return napi_ok;
 }
@@ -1148,24 +1211,10 @@ napi_status napi_delete_reference(napi_env e, napi_ref ref) {
 // effectively "pinned". Calling this when the refcount is 0 and the target is unavailable
 // results in an error.
 napi_status napi_reference_addref(napi_env e, napi_ref ref, int* result) {
-  JsRef weakRef = reinterpret_cast<JsRef>(ref);
+  CHECK_ARG(ref);
 
-  JsValueRef target;
-  CHECK_JSRT(JsGetWeakReferenceValue(weakRef, &target));
-
-  if (target == nullptr) {
-    // Called napi_reference_addref when the target is unavailable!
-    return napi_set_last_error(napi_generic_failure);
-  }
-
-  CHECK_JSRT(JsAddRef(target, nullptr));
-
-  unsigned int count;
-  CHECK_JSRT(JsAddRef(weakRef, &count));
-
-  if (result != nullptr) {
-    *result = static_cast<int>(count - 1);
-  }
+  jsrtimpl::Reference* refimpl = reinterpret_cast<jsrtimpl::Reference*>(ref);
+  CHECK_JSRT(refimpl->AddRef(result));
 
   return napi_ok;
 }
@@ -1174,27 +1223,10 @@ napi_status napi_reference_addref(napi_env e, napi_ref ref, int* result) {
 // 0 the reference is now weak and the object may be GC'd at any time if there are no other
 // references. Calling this when the refcount is already 0 results in an error.
 napi_status napi_reference_release(napi_env e, napi_ref ref, int* result) {
-  JsRef weakRef = reinterpret_cast<JsRef>(ref);
+  CHECK_ARG(ref);
 
-  JsValueRef target;
-  CHECK_JSRT(JsGetWeakReferenceValue(weakRef, &target));
-
-  if (target == nullptr) {
-    return napi_set_last_error(napi_generic_failure);
-  }
-
-  unsigned int count;
-  CHECK_JSRT(JsRelease(weakRef, &count));
-  if (count == 0) {
-    // Called napi_release_reference too many times on a reference!
-    return napi_set_last_error(napi_generic_failure);
-  }
-
-  CHECK_JSRT(JsRelease(target, nullptr));
-
-  if (result != nullptr) {
-    *result = static_cast<int>(count - 1);
-  }
+  jsrtimpl::Reference* refimpl = reinterpret_cast<jsrtimpl::Reference*>(ref);
+  CHECK_JSRT(refimpl->Release(result));
 
   return napi_ok;
 }
@@ -1202,9 +1234,11 @@ napi_status napi_reference_release(napi_env e, napi_ref ref, int* result) {
 // Attempts to get a referenced value. If the reference is weak, the value might no longer be
 // available, in that case the call is still successful but the result is NULL.
 napi_status napi_get_reference_value(napi_env e, napi_ref ref, napi_value* result) {
+  CHECK_ARG(ref);
   CHECK_ARG(result);
-  JsWeakRef weakRef = reinterpret_cast<JsWeakRef>(ref);
-  CHECK_JSRT(JsGetWeakReferenceValue(weakRef, reinterpret_cast<JsValueRef*>(result)));
+
+  jsrtimpl::Reference* refimpl = reinterpret_cast<jsrtimpl::Reference*>(ref);
+  CHECK_JSRT(refimpl->Get(reinterpret_cast<JsValueRef*>(result)));
   return napi_ok;
 }
 

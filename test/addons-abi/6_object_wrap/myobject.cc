@@ -19,6 +19,7 @@ void MyObject::Init(napi_env env, napi_value exports) {
     { "value", nullptr, GetValue, SetValue },
     { "plusOne", PlusOne },
     { "multiply", Multiply },
+    { "isInstance", IsInstance },
   };
 
   napi_value cons;
@@ -193,5 +194,34 @@ void MyObject::Multiply(napi_env env, napi_callback_info info) {
   if (status != napi_ok) return;
 
   status = napi_set_return_value(env, info, instance);
+  if (status != napi_ok) return;
+}
+
+void MyObject::IsInstance(napi_env env, napi_callback_info info) {
+  napi_status status;
+
+  napi_value jsthis;
+  status = napi_get_cb_this(env, info, &jsthis);
+  if (status != napi_ok) return;
+
+  napi_valuetype valuetype;
+  status = napi_get_type_of_value(env, jsthis, &valuetype);
+  if (status != napi_ok) return;
+
+  bool result = false;
+  if (valuetype == napi_object) {
+    napi_value constructorFunction;
+    status = napi_get_reference_value(env, constructor, &constructorFunction);
+    if (status != napi_ok) return;
+
+    status = napi_instanceof(env, jsthis, constructor, &result);
+    if (status != napi_ok) return;
+  }
+
+  napi_value resultValue;
+  status = napi_create_boolean(env, returnValue, &resultValue)
+  if (status != napi_ok) return;
+
+  status = napi_set_return_value(env, info, resultValue);
   if (status != napi_ok) return;
 }

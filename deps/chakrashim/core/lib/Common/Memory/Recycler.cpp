@@ -1973,11 +1973,13 @@ Recycler::ProcessMarkContext(MarkContext * markContext)
 void
 Recycler::ProcessMark(bool background)
 {
+#if ENABLE_CONCURRENT_GC
     if (background)
     {
         GCETW(GC_BACKGROUNDMARK_START, (this, backgroundRescanCount));
     }
     else
+#endif
     {
         GCETW(GC_MARK_START, (this));
     }
@@ -1995,11 +1997,13 @@ Recycler::ProcessMark(bool background)
 
     RECYCLER_PROFILE_EXEC_THREAD_END(background, this, Js::MarkPhase);
 
+#if ENABLE_CONCURRENT_GC
     if (background)
     {
         GCETW(GC_BACKGROUNDMARK_STOP, (this, backgroundRescanCount));
     }
     else
+#endif
     {
         GCETW(GC_MARK_STOP, (this));
     }
@@ -2011,11 +2015,13 @@ Recycler::ProcessMark(bool background)
 void
 Recycler::ProcessParallelMark(bool background, MarkContext * markContext)
 {
+#if ENABLE_CONCURRENT_GC
     if (background)
     {
         GCETW(GC_BACKGROUNDPARALLELMARK_START, (this, backgroundRescanCount));
     }
     else
+#endif
     {
         GCETW(GC_PARALLELMARK_START, (this));
     }
@@ -2033,11 +2039,13 @@ Recycler::ProcessParallelMark(bool background, MarkContext * markContext)
 
     RECYCLER_PROFILE_EXEC_THREAD_END(background, this, Js::MarkPhase);
 
+#if ENABLE_CONCURRENT_GC
     if (background)
     {
         GCETW(GC_BACKGROUNDPARALLELMARK_STOP, (this, backgroundRescanCount));
     }
     else
+#endif
     {
         GCETW(GC_PARALLELMARK_STOP, (this));
     }
@@ -3545,8 +3553,10 @@ Recycler::DoCollect(CollectionFlags flags)
 
 #endif
 #ifdef RECYCLER_DUMP_OBJECT_GRAPH
+		/*
     if (dumpObjectOnceOnCollect || GetRecyclerFlagsTable().DumpObjectGraphOnCollect)
     {
+		*/
         DumpObjectGraph();
         dumpObjectOnceOnCollect = false;
 
@@ -3555,7 +3565,9 @@ Recycler::DoCollect(CollectionFlags flags)
         // which will set inPartialCollectMode to false.
         partial = false;
 #endif
+		/*
     }
+		*/
 #endif
 #if ENABLE_CONCURRENT_GC
     const bool concurrent = (flags & CollectMode_Concurrent) != 0;
@@ -7220,6 +7232,7 @@ Recycler::ClearTrackAllocInfo(TrackAllocData* data/* = NULL*/)
 bool
 Recycler::DoProfileAllocTracker()
 {
+    /*
     bool doTracker = false;
 #ifdef RECYCLER_DUMP_OBJECT_GRAPH
     doTracker = Js::Configuration::Global.flags.DumpObjectGraphOnExit
@@ -7239,6 +7252,8 @@ Recycler::DoProfileAllocTracker()
     }
 #endif
     return doTracker || MemoryProfiler::DoTrackRecyclerAllocation();
+    */
+	return true;
 }
 
 void

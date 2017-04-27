@@ -7,19 +7,21 @@ const assert = require('assert');
 
 assert.strictEqual(binding.newBuffer().toString(), binding.theText,
                    'buffer returned by newBuffer() has wrong contents');
-assert.strictEqual(binding.newExternalBuffer().toString(), binding.theText,
+global.gc();
+
+let buffer1 = binding.newExternalBuffer();
+assert.strictEqual(buffer1.toString(), binding.theText,
                    'buffer returned by newExternalBuffer() has wrong contents');
-console.log('gc1');
+buffer1 = null;
 global.gc();
 assert.strictEqual(binding.getDeleterCallCount(), 1, 'deleter was not called');
 assert.strictEqual(binding.copyBuffer().toString(), binding.theText,
                    'buffer returned by copyBuffer() has wrong contents');
 
-let buffer = binding.staticBuffer();
-assert.strictEqual(binding.bufferHasInstance(buffer), true,
+let buffer2 = binding.staticBuffer();
+assert.strictEqual(binding.bufferHasInstance(buffer2), true,
                    'buffer type checking fails');
-assert.strictEqual(binding.bufferInfo(buffer), true, 'buffer data is accurate');
-buffer = null;
+assert.strictEqual(binding.bufferInfo(buffer2), true, 'buffer data is accurate');
+buffer2 = null;
 global.gc();
-console.log('gc2');
 assert.strictEqual(binding.getDeleterCallCount(), 2, 'deleter was not called');

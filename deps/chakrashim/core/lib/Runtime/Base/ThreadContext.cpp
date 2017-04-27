@@ -4074,11 +4074,11 @@ void DumpRecyclerObjectGraph()
 #if ENABLE_NATIVE_CODEGEN
 BOOL ThreadContext::IsNativeAddress(void * pCodeAddr)
 {
-    boolean result;
 #if ENABLE_OOP_NATIVE_CODEGEN
     if (JITManager::GetJITManager()->IsOOPJITEnabled())
     {
-        if (PreReservedVirtualAllocWrapper::IsInRange((void*)m_prereservedRegionAddr, pCodeAddr))
+				boolean result;
+				if (PreReservedVirtualAllocWrapper::IsInRange((void*)m_prereservedRegionAddr, pCodeAddr))
         {
             return true;
         }

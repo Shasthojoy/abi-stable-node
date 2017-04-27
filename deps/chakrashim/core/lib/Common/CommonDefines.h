@@ -126,8 +126,8 @@
 // write-watch support that the Windows Memory Manager provides.
 #ifdef _WIN32
 #define SYSINFO_IMAGE_BASE_AVAILABLE 1
-#define ENABLE_CONCURRENT_GC 1
-#define ENABLE_PARTIAL_GC 1
+#define ENABLE_CONCURRENT_GC 0
+#define ENABLE_PARTIAL_GC 0
 #define ENABLE_BACKGROUND_PAGE_ZEROING 1
 #define ENABLE_BACKGROUND_PAGE_FREEING 1
 #define ENABLE_RECYCLER_TYPE_TRACKING 1
@@ -340,7 +340,7 @@
 #if ENABLE_TTD
 #define TTDAssert(C, M) { if(!(C)) TTDAbort_fatal_error(M); }
 #else
-#define TTDAssert(C, M) 
+#define TTDAssert(C, M)
 #endif
 
 #if ENABLE_TTD
